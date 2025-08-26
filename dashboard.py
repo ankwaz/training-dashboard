@@ -1,6 +1,7 @@
 # Required libraries:
-# streamlit, pandas, numpy, plotly, kaleido
+# streamlit, pandas, numpy, plotly, kaleido, openpyxl
 
+import os
 import streamlit as st
 import pandas as pd
 import numpy as np
@@ -10,31 +11,30 @@ from io import BytesIO
 
 st.set_page_config(page_title="자격증 대시보드", layout="wide", page_icon="📊")
 
+# 자격증 설명 사전
+CERT_DESC = {
+    "정보처리기사": "IT 시스템 개발 및 운영 능력 인증",
+    "전기기사": "전기 설계 및 시공 전문가",
+    "건축기사": "건축 설계·감리 기술자",
+    "토목기사": "토목 구조물 설계 및 관리",
+    "기계기사": "기계 설계·제작 능력 인증",
+    "산업안전기사": "산업현장 안전관리 전문가",
+    "화공기사": "화학공정 운영·관리 능력",
+    "환경기사": "환경오염 방지 기술자",
+    "통신기사": "통신 시스템 설계·운영",
+    "소방설비기사": "소방 설비 설계·시공 전문가",
+}
+
 @st.cache_data
-def load_data(n: int = 500):
+def generate_sample_data(n: int = 500) -> pd.DataFrame:
     np.random.seed(42)
     years = np.arange(1993, 2026)
     genders = ["남성", "여성"]
     regions = [
         "서울", "부산", "대구", "인천", "광주", "대전", "울산", "세종",
-        "경기", "강원", "충북", "충남", "전북", "전남", "경북", "경남", "제주"
+        "경기", "강원", "충북", "충남", "전북", "전남", "경북", "경남", "제주",
     ]
-    certificate_types = [
-        "정보처리기사", "전기기사", "건축기사", "토목기사", "기계기사",
-        "산업안전기사", "화공기사", "환경기사", "통신기사", "소방설비기사"
-    ]
-    cert_desc = {
-        "정보처리기사": "IT 시스템 개발 및 운영 능력 인증",
-        "전기기사": "전기 설계 및 시공 전문가",
-        "건축기사": "건축 설계·감리 기술자",
-        "토목기사": "토목 구조물 설계 및 관리",
-        "기계기사": "기계 설계·제작 능력 인증",
-        "산업안전기사": "산업현장 안전관리 전문가",
-        "화공기사": "화학공정 운영·관리 능력",
-        "환경기사": "환경오염 방지 기술자",
-        "통신기사": "통신 시스템 설계·운영",
-        "소방설비기사": "소방 설비 설계·시공 전문가",
-    }
+    certificate_types = list(CERT_DESC.keys())
     data = []
     for _ in range(n):
         year = np.random.choice(years)
@@ -57,20 +57,30 @@ def load_data(n: int = 500):
                 "acquired_at": acquired_at,
             }
         )
-    df = pd.DataFrame(data)
-    return df, cert_desc, regions, genders, certificate_types
+    return pd.DataFrame(data)
 
-df, CERT_DESC, ALL_REGIONS, ALL_GENDERS, ALL_CERTS = load_data()
+@st.cache_data
+def load_data(file: BytesIO | None = None) -> pd.DataFrame:
+    if file is not None:
+        return pd.read_excel(file)
+    if os.path.exists("certifications.xlsx"):
+        return pd.read_excel("certifications.xlsx")
+    return generate_sample_data(500)
+
+uploaded_file = st.sidebar.file_uploader("엑셀 데이터 업로드", type=["xlsx"])
+df = load_data(uploaded_file)
+
+ALL_REGIONS = sorted(df["region"].unique())
+ALL_GENDERS = sorted(df["gender"].unique())
+ALL_CERTS = sorted(df["certificate_type"].unique())
 
 
 def parse_search(query: str):
     tokens = query.strip().split()
     filters = {"year": [], "gender": [], "region": [], "certificate_type": []}
     for tok in tokens:
-        if tok.isdigit():
-            y = int(tok)
-            if y in df["year"].unique():
-                filters["year"].append(y)
+        if tok.isdigit() and int(tok) in df["year"].unique():
+            filters["year"].append(int(tok))
         if tok in ALL_GENDERS:
             filters["gender"].append(tok)
         if tok in ALL_REGIONS:
@@ -79,22 +89,24 @@ def parse_search(query: str):
             filters["certificate_type"].append(tok)
     return filters
 
+st.title("자격증취득자 분석 대시보드")
 
-st.sidebar.header("필터")
-year_sel = st.sidebar.multiselect("연도", sorted(df["year"].unique()))
-gender_sel = st.sidebar.multiselect("성별", ALL_GENDERS)
-region_sel = st.sidebar.multiselect("지역", ALL_REGIONS)
-cert_sel = st.sidebar.multiselect("자격증 종류", ALL_CERTS)
-search_q = st.sidebar.text_input("텍스트 검색", placeholder="예: 서울 2020 여성")
-parsed = parse_search(search_q)
-if parsed["year"]:
-    year_sel = parsed["year"]
-if parsed["gender"]:
-    gender_sel = parsed["gender"]
-if parsed["region"]:
-    region_sel = parsed["region"]
-if parsed["certificate_type"]:
-    cert_sel = parsed["certificate_type"]
+with st.expander("필터", expanded=True):
+    f1, f2, f3, f4 = st.columns(4)
+    year_sel = f1.multiselect("연도", sorted(df["year"].unique()))
+    gender_sel = f2.multiselect("성별", ALL_GENDERS)
+    region_sel = f3.multiselect("지역", ALL_REGIONS)
+    cert_sel = f4.multiselect("자격증 종류", ALL_CERTS)
+    search_q = st.text_input("텍스트 검색", placeholder="예: 서울 2020 여성")
+    parsed = parse_search(search_q)
+    if parsed["year"]:
+        year_sel = parsed["year"]
+    if parsed["gender"]:
+        gender_sel = parsed["gender"]
+    if parsed["region"]:
+        region_sel = parsed["region"]
+    if parsed["certificate_type"]:
+        cert_sel = parsed["certificate_type"]
 
 filtered = df.copy()
 if year_sel:
@@ -106,12 +118,25 @@ if region_sel:
 if cert_sel:
     filtered = filtered[filtered["certificate_type"].isin(cert_sel)]
 
+# 상단 주요 지표
+_gender_counts = filtered["gender"].value_counts()
+_male = int(_gender_counts.get("남성", 0))
+_female = int(_gender_counts.get("여성", 0))
+_region_counts = filtered["region"].value_counts()
+_top_region = _region_counts.index[0] if not _region_counts.empty else "-"
+
+m1, m2, m3 = st.columns(3)
+m1.metric("전체 취득자", f"{len(filtered):,}명")
+m2.metric("남 / 여 취득자", f"{_male:,} / {_female:,}")
+m3.metric("최다 지역", _top_region)
+
 
 def add_download_button(fig, filename: str):
     buf = BytesIO()
     fig.write_image(buf, format="png")
-    st.download_button("PNG로 다운로드", data=buf.getvalue(), file_name=filename, mime="image/png")
-
+    st.download_button(
+        "PNG로 다운로드", data=buf.getvalue(), file_name=filename, mime="image/png"
+    )
 
 # 연도별 자격증 취득자 수
 st.subheader("연도별 자격증 취득자 수")
@@ -120,12 +145,14 @@ fig_year = px.line(year_counts, x="year", y="count", markers=True)
 st.plotly_chart(fig_year, use_container_width=True)
 if not year_counts.empty:
     max_row = year_counts.loc[year_counts["count"].idxmax()]
-    st.caption(f"{int(max_row['year'])}년에 {int(max_row['count'])}명이 취득했습니다.")
+    st.caption(
+        f"{int(max_row['year'])}년에 {int(max_row['count'])}명이 취득했습니다."
+    )
 add_download_button(fig_year, "yearly_trend.png")
 
 # 성별 비율
 st.subheader("성별 비율")
-gender_counts = filtered["gender"].value_counts().reset_index()
+gender_counts = _gender_counts.reset_index()
 gender_counts.columns = ["gender", "count"]
 fig_gender = px.pie(gender_counts, names="gender", values="count")
 st.plotly_chart(fig_gender, use_container_width=True)
@@ -138,7 +165,7 @@ add_download_button(fig_gender, "gender_ratio.png")
 
 # 지역별 분포
 st.subheader("지역별 분포")
-region_counts = filtered["region"].value_counts().reset_index()
+region_counts = _region_counts.reset_index()
 region_counts.columns = ["region", "count"]
 fig_region_bar = px.bar(region_counts, x="region", y="count")
 st.plotly_chart(fig_region_bar, use_container_width=True)
@@ -184,6 +211,7 @@ add_download_button(fig_geo, "region_map.png")
 
 # 연령대별 분포
 st.subheader("연령대별 분포")
+
 def age_group(age: int) -> str:
     if age < 30:
         return "20대"
@@ -191,6 +219,7 @@ def age_group(age: int) -> str:
         return "30대"
     else:
         return "40대 이상"
+
 filtered["age_group"] = filtered["age"].apply(age_group)
 age_counts = filtered["age_group"].value_counts().reset_index()
 age_counts.columns = ["age_group", "count"]
@@ -207,11 +236,11 @@ if year_sel and len(year_sel) == 1:
     cert_df = filtered[filtered["year"] == year_sel[0]]
 else:
     cert_df = filtered
-cert_counts = (
-    cert_df["certificate_type"].value_counts().head(5).reset_index()
-)
+cert_counts = cert_df["certificate_type"].value_counts().head(5).reset_index()
 cert_counts.columns = ["certificate_type", "count"]
-cert_counts["description"] = cert_counts["certificate_type"].map(CERT_DESC)
+cert_counts["description"] = cert_counts["certificate_type"].map(
+    lambda x: CERT_DESC.get(x, "설명 없음")
+)
 fig_cert = px.bar(
     cert_counts,
     x="certificate_type",
@@ -223,3 +252,4 @@ if not cert_counts.empty:
     top_cert = cert_counts.iloc[0]["certificate_type"]
     st.caption(f"가장 인기 있는 자격증은 {top_cert}입니다.")
 add_download_button(fig_cert, "top_certificates.png")
+
