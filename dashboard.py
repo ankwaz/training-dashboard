@@ -10,6 +10,38 @@ from io import BytesIO
 
 st.set_page_config(page_title="자격증 대시보드", layout="wide", page_icon="📊")
 
+# ----- 스타일 및 헤더 구성 -----
+st.markdown(
+    """
+    <style>
+    .top-nav {
+        background: linear-gradient(90deg, #0d6efd, #2a52be);
+        color: white;
+        padding: 1rem 2rem;
+        border-radius: 8px;
+        font-size: 1.3rem;
+        font-weight: 700;
+        margin-bottom: 1rem;
+    }
+    .metric-card {
+        padding: 1.2rem;
+        border-radius: 0.5rem;
+        box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+        text-align: center;
+        color: white;
+    }
+    .metric-purple {background:#6f42c1;}
+    .metric-blue {background:#0d6efd;}
+    .metric-indigo {background:#6610f2;}
+    .metric-card h3{font-size:1rem;font-weight:600;margin:0 0 .5rem 0;}
+    .metric-card p{font-size:2rem;font-weight:700;margin:0;}
+    div[data-testid="stSidebar"] .stButton>button{width:100%;}
+    </style>
+    <div class="top-nav">자격증 취득자 분석 대시보드</div>
+    """,
+    unsafe_allow_html=True,
+)
+
 # 자격증 설명 사전
 CERT_DESC = {
     "정보처리기사": "IT 시스템 개발 및 운영 능력 인증",
@@ -92,24 +124,27 @@ def parse_search(query: str):
             filters["certificate_type"].append(tok)
     return filters
 
-st.title("자격증취득자 분석 대시보드")
+# 안내 문구
+st.info("현재는 500건의 샘플 데이터만 표시됩니다. 72,000건 데이터로 곧 업데이트될 예정입니다!")
 
-with st.expander("필터", expanded=True):
-    f1, f2, f3, f4 = st.columns(4)
-    year_sel = f1.multiselect("연도", sorted(df["year"].unique()))
-    gender_sel = f2.multiselect("성별", ALL_GENDERS)
-    region_sel = f3.multiselect("지역", ALL_REGIONS)
-    cert_sel = f4.multiselect("자격증 종류", ALL_CERTS)
-    search_q = st.text_input("텍스트 검색", placeholder="예: 서울 2020 여성")
-    parsed = parse_search(search_q)
-    if parsed["year"]:
-        year_sel = parsed["year"]
-    if parsed["gender"]:
-        gender_sel = parsed["gender"]
-    if parsed["region"]:
-        region_sel = parsed["region"]
-    if parsed["certificate_type"]:
-        cert_sel = parsed["certificate_type"]
+# 사이드바 필터
+st.sidebar.header("필터")
+year_sel = st.sidebar.multiselect("📅 연도", sorted(df["year"].unique()))
+gender_sel = st.sidebar.multiselect("🚻 성별", ALL_GENDERS)
+region_sel = st.sidebar.multiselect("📍 지역", ALL_REGIONS)
+cert_sel = st.sidebar.multiselect("📝 자격증 종류", ALL_CERTS)
+search_q = st.sidebar.text_input("텍스트 검색", placeholder="예: 서울 2020 여성")
+parsed = parse_search(search_q)
+if parsed["year"]:
+    year_sel = parsed["year"]
+if parsed["gender"]:
+    gender_sel = parsed["gender"]
+if parsed["region"]:
+    region_sel = parsed["region"]
+if parsed["certificate_type"]:
+    cert_sel = parsed["certificate_type"]
+if st.sidebar.button("모든 필터 초기화"):
+    st.experimental_rerun()
 
 filtered = df.copy()
 if year_sel:
@@ -128,10 +163,13 @@ _female = int(_gender_counts.get("여성", 0))
 _region_counts = filtered["region"].value_counts()
 _top_region = _region_counts.index[0] if not _region_counts.empty else "-"
 
+def metric_html(title: str, value: str, cls: str) -> str:
+    return f"<div class='metric-card {cls}'><h3>{title}</h3><p>{value}</p></div>"
+
 m1, m2, m3 = st.columns(3)
-m1.metric("전체 취득자", f"{len(filtered):,}명")
-m2.metric("남 / 여 취득자", f"{_male:,} / {_female:,}")
-m3.metric("최다 지역", _top_region)
+m1.markdown(metric_html("전체 취득자", f"{len(filtered):,}명", "metric-purple"), unsafe_allow_html=True)
+m2.markdown(metric_html("남 / 여 취득자", f"{_male:,} / {_female:,}", "metric-blue"), unsafe_allow_html=True)
+m3.markdown(metric_html("최다 지역", _top_region, "metric-indigo"), unsafe_allow_html=True)
 
 
 def add_download_button(fig, filename: str):
