@@ -1,0 +1,181 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>자격증 취득자 대시보드</title>
+  <script src="https://cdn.plot.ly/plotly-2.32.0.min.js"></script>
+  <style>
+    body { font-family: Arial, sans-serif; margin: 0; padding: 0; }
+    .container { display: flex; flex-direction: column; padding: 10px; gap: 10px; }
+    .filters { display: flex; flex-wrap: wrap; gap: 10px; }
+    .charts { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 20px; }
+    .chart { border: 1px solid #ccc; padding: 10px; }
+    button.download { margin-top: 5px; }
+    @media (max-width: 600px) { .filters { flex-direction: column; } }
+  </style>
+</head>
+<body>
+<div class="container">
+  <h1>자격증 취득자 대시보드</h1>
+  <div class="filters">
+    <select id="yearFilter"><option value="all">연도 전체</option></select>
+    <select id="genderFilter">
+      <option value="all">성별 전체</option>
+      <option value="남성">남성</option>
+      <option value="여성">여성</option>
+    </select>
+    <select id="regionFilter"><option value="all">지역 전체</option></select>
+    <select id="certificateFilter"><option value="all">자격증 전체</option></select>
+    <input type="text" id="searchBox" placeholder="예: 서울 2020 여성" />
+    <button id="searchBtn">검색</button>
+  </div>
+  <div id="summary"></div>
+  <div class="charts">
+    <div class="chart"><div id="yearChart"></div><button class="download" data-chart="yearChart">PNG 다운로드</button></div>
+    <div class="chart"><div id="genderChart"></div><button class="download" data-chart="genderChart">PNG 다운로드</button></div>
+    <div class="chart"><div id="regionBarChart"></div><button class="download" data-chart="regionBarChart">PNG 다운로드</button></div>
+    <div class="chart"><div id="regionMap"></div><button class="download" data-chart="regionMap">PNG 다운로드</button></div>
+    <div class="chart"><div id="ageChart"></div><button class="download" data-chart="ageChart">PNG 다운로드</button></div>
+    <div class="chart"><div id="certificateChart"></div><button class="download" data-chart="certificateChart">PNG 다운로드</button></div>
+  </div>
+</div>
+<script>
+const years = Array.from({length: 2025-1993+1}, (_,i)=>1993+i);
+const genders = ['남성','여성'];
+const regions = ['서울','부산','대구','인천','광주','대전','울산','세종','경기','강원','충북','충남','전북','전남','경북','경남','제주'];
+const certificateTypes = ['정보처리기사','전기기사','토목기사','산업안전기사','조경기사','건축기사'];
+const certDescriptions = {
+  '정보처리기사':'소프트웨어 개발과 운영에 대한 자격',
+  '전기기사':'전기설비의 설계 및 관리',
+  '토목기사':'토목 구조물의 설계 및 시공',
+  '산업안전기사':'산업현장의 안전 관리 전문가',
+  '조경기사':'조경 설계와 시공 전문가',
+  '건축기사':'건축물 설계와 시공 관리'
+};
+const regionCoords = {
+  '서울':[37.5665,126.9780], '부산':[35.1796,129.0756], '대구':[35.8714,128.6014], '인천':[37.4563,126.7052],
+  '광주':[35.1595,126.8526], '대전':[36.3504,127.3845], '울산':[35.5384,129.3114], '세종':[36.4800,127.2890],
+  '경기':[37.4138,127.5183], '강원':[37.8228,128.1555], '충북':[36.8000,127.7000], '충남':[36.5184,126.8000],
+  '전북':[35.7175,127.1530], '전남':[34.8679,126.9910], '경북':[36.5760,128.5056], '경남':[35.4606,128.2132], '제주':[33.4996,126.5312]
+};
+function rand(arr){ return arr[Math.floor(Math.random()*arr.length)]; }
+function randomDate(year){
+  const m = String(Math.floor(Math.random()*12)+1).padStart(2,'0');
+  const d = String(Math.floor(Math.random()*28)+1).padStart(2,'0');
+  return `${year}-${m}-${d}`;
+}
+const data = Array.from({length:500}, ()=>{
+  const year = rand(years);
+  const birthYear = year - (20 + Math.floor(Math.random()*25));
+  const age = year - birthYear;
+  return {
+    year: year,
+    gender: rand(genders),
+    age: age,
+    birth_year: birthYear,
+    region: rand(regions),
+    certificate_type: rand(certificateTypes),
+    acquired_at: randomDate(year)
+  };
+});
+const currentFilters = {year:'all', gender:'all', region:'all', certificate:'all'};
+function populateFilters(){
+  const yf = document.getElementById('yearFilter');
+  years.forEach(y=>{const o=document.createElement('option');o.value=y;o.textContent=y;yf.appendChild(o);});
+  const rf=document.getElementById('regionFilter');
+  regions.forEach(r=>{const o=document.createElement('option');o.value=r;o.textContent=r;rf.appendChild(o);});
+  const cf=document.getElementById('certificateFilter');
+  certificateTypes.forEach(c=>{const o=document.createElement('option');o.value=c;o.textContent=c;cf.appendChild(o);});
+}
+function getFiltered(){
+  return data.filter(d =>
+    (currentFilters.year==='all'||d.year==currentFilters.year) &&
+    (currentFilters.gender==='all'||d.gender===currentFilters.gender) &&
+    (currentFilters.region==='all'||d.region===currentFilters.region) &&
+    (currentFilters.certificate==='all'||d.certificate_type===currentFilters.certificate)
+  );
+}
+function drawYearChart(filtered){
+  const counts={}; filtered.forEach(d=>{counts[d.year]=(counts[d.year]||0)+1;});
+  const xs=Object.keys(counts).sort(); const ys=xs.map(x=>counts[x]);
+  Plotly.newPlot('yearChart',[{x:xs,y:ys,mode:'lines+markers'}],{title:'연도별 자격증 취득자 수'});
+}
+function drawGenderChart(filtered){
+  const counts=genders.map(g=>filtered.filter(d=>d.gender===g).length);
+  Plotly.newPlot('genderChart',[{labels:genders,values:counts,type:'pie'}],{title:'성별 비율'});
+}
+function drawRegionBar(filtered){
+  const counts=regions.map(r=>filtered.filter(d=>d.region===r).length);
+  Plotly.newPlot('regionBarChart',[{x:regions,y:counts,type:'bar'}],{title:'지역별 분포'});
+}
+function drawRegionMap(filtered){
+  const counts={}; filtered.forEach(d=>{counts[d.region]=(counts[d.region]||0)+1;});
+  const lats=[],lons=[],texts=[],sizes=[]; Object.keys(regionCoords).forEach(r=>{
+    lats.push(regionCoords[r][0]); lons.push(regionCoords[r][1]);
+    const c=counts[r]||0; texts.push(`${r}: ${c}`); sizes.push(5+c);
+  });
+  Plotly.newPlot('regionMap',[{
+    type:'scattergeo', lat:lats, lon:lons, text:texts,
+    marker:{size:sizes,color:sizes,colorscale:'Blues',reversescale:true,showscale:true}
+  }],{title:'지도 기반 지역 분포', geo:{scope:'asia',center:{lat:36.5,lon:127.8},projection:{type:'mercator'}}});
+}
+function drawAgeChart(filtered){
+  const groups={'20대':0,'30대':0,'40대 이상':0};
+  filtered.forEach(d=>{ if(d.age<30) groups['20대']++; else if(d.age<40) groups['30대']++; else groups['40대 이상']++; });
+  Plotly.newPlot('ageChart',[{x:Object.keys(groups),y:Object.values(groups),type:'bar'}],{title:'연령대별 분포'});
+}
+function drawCertificateChart(filtered){
+  const counts={}; filtered.forEach(d=>{counts[d.certificate_type]=(counts[d.certificate_type]||0)+1;});
+  const entries=Object.entries(counts).sort((a,b)=>b[1]-a[1]).slice(0,5);
+  const x=entries.map(e=>e[0]); const y=entries.map(e=>e[1]);
+  const text=x.map(c=>certDescriptions[c]);
+  Plotly.newPlot('certificateChart',[{x:x,y:y,type:'bar',text:text,hovertemplate:'%{x}<br>%{y}명<br>%{text}<extra></extra>'}],{title:'자격증 인기 순위'});
+}
+function updateSummary(filtered){
+  const total=filtered.length;
+  const yearText=currentFilters.year==='all'?'전체 기간':currentFilters.year+'년';
+  const female=filtered.filter(d=>d.gender==='여성').length;
+  const ratio=total? (female/total*100).toFixed(1):0;
+  document.getElementById('summary').textContent=`${yearText} 여성 취득자 비율은 ${ratio}%입니다.`;
+}
+function updateCharts(){
+  const filtered=getFiltered();
+  drawYearChart(filtered); drawGenderChart(filtered); drawRegionBar(filtered);
+  drawRegionMap(filtered); drawAgeChart(filtered); drawCertificateChart(filtered); updateSummary(filtered);
+}
+function updateFilterControls(){
+  document.getElementById('yearFilter').value=currentFilters.year;
+  document.getElementById('genderFilter').value=currentFilters.gender;
+  document.getElementById('regionFilter').value=currentFilters.region;
+  document.getElementById('certificateFilter').value=currentFilters.certificate;
+}
+function parseSearch(){
+  const tokens=document.getElementById('searchBox').value.trim().split(/\s+/);
+  tokens.forEach(tok=>{
+    if(years.includes(parseInt(tok))) currentFilters.year=parseInt(tok);
+    else if(genders.includes(tok)) currentFilters.gender=tok;
+    else if(regions.includes(tok)) currentFilters.region=tok;
+    else if(certificateTypes.includes(tok)) currentFilters.certificate=tok;
+  });
+  updateFilterControls(); updateCharts();
+}
+populateFilters();
+updateCharts();
+document.getElementById('yearFilter').addEventListener('change',e=>{currentFilters.year=e.target.value==='all'?'all':parseInt(e.target.value);updateCharts();});
+document.getElementById('genderFilter').addEventListener('change',e=>{currentFilters.gender=e.target.value;updateCharts();});
+document.getElementById('regionFilter').addEventListener('change',e=>{currentFilters.region=e.target.value;updateCharts();});
+document.getElementById('certificateFilter').addEventListener('change',e=>{currentFilters.certificate=e.target.value;updateCharts();});
+
+document.getElementById('searchBtn').addEventListener('click',parseSearch);
+document.getElementById('searchBox').addEventListener('keypress',e=>{if(e.key==='Enter') parseSearch();});
+
+document.querySelectorAll('button.download').forEach(btn=>{
+  btn.addEventListener('click',()=>{
+    const chartId=btn.getAttribute('data-chart');
+    Plotly.downloadImage(chartId,{format:'png',filename:chartId});
+  });
+});
+</script>
+</body>
+</html>
