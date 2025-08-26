@@ -1,5 +1,4 @@
-# Required libraries:
-# streamlit, pandas, numpy, plotly, kaleido, openpyxl
+# Required libraries: streamlit, pandas, numpy, plotly, kaleido, openpyxl
 
 import os
 import streamlit as st
