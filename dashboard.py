@@ -58,13 +58,17 @@ def generate_sample_data(n: int = 500) -> pd.DataFrame:
         )
     return pd.DataFrame(data)
 
-@st.cache_data
 def load_data(file: BytesIO | None = None) -> pd.DataFrame:
+    """엑셀을 불러오거나 샘플 데이터를 생성"""
     if file is not None:
-        return pd.read_excel(file)
-    if os.path.exists("certifications.xlsx"):
-        return pd.read_excel("certifications.xlsx")
-    return generate_sample_data(500)
+        df = pd.read_excel(file)
+    elif os.path.exists("certifications.xlsx"):
+        df = pd.read_excel("certifications.xlsx")
+    else:
+        df = generate_sample_data(500)
+    if "acquired_at" in df.columns:
+        df["acquired_at"] = pd.to_datetime(df["acquired_at"])
+    return df
 
 uploaded_file = st.sidebar.file_uploader("엑셀 데이터 업로드", type=["xlsx"])
 df = load_data(uploaded_file)
