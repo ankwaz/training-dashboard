@@ -10,34 +10,63 @@ from io import BytesIO
 
 st.set_page_config(page_title="자격증 대시보드", layout="wide", page_icon="📊")
 
-# ----- 스타일 및 헤더 구성 -----
+# ----- 글로벌 스타일 및 헤더 구성 -----
 st.markdown(
     """
     <style>
-    .top-nav {
-        background: linear-gradient(90deg, #0d6efd, #2a52be);
-        color: white;
-        padding: 1rem 2rem;
-        border-radius: 8px;
-        font-size: 1.3rem;
-        font-weight: 700;
-        margin-bottom: 1rem;
+    @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;700&display=swap');
+    html, body, [class*="css"] {
+        font-family: 'Noto Sans KR', sans-serif;
+        background:#f8fafc;
+        color:#64748b;
     }
-    .metric-card {
-        padding: 1.2rem;
-        border-radius: 0.5rem;
-        box-shadow: 0 1px 3px rgba(0,0,0,0.1);
-        text-align: center;
-        color: white;
+    .stApp {background:#f8fafc;}
+    .header {
+        position: sticky; top:0; z-index:100;
+        display:flex; justify-content:space-between; align-items:center;
+        background:#ffffff; padding:12px 24px; border-bottom:1px solid #e2e8f0;
     }
-    .metric-purple {background:#6f42c1;}
-    .metric-blue {background:#0d6efd;}
-    .metric-indigo {background:#6610f2;}
-    .metric-card h3{font-size:1rem;font-weight:600;margin:0 0 .5rem 0;}
-    .metric-card p{font-size:2rem;font-weight:700;margin:0;}
-    div[data-testid="stSidebar"] .stButton>button{width:100%;}
+    .header-left .title{font-size:20px;font-weight:700;color:#1e293b;}
+    .header-left .breadcrumb{font-size:14px;color:#64748b;}
+    .header-buttons button{
+        background:#2563eb; color:#fff; border:none; border-radius:8px;
+        padding:8px; margin-left:8px; cursor:pointer;
+    }
+    .header-buttons button:hover{background:#3b82f6;}
+    div[data-testid="stSidebar"]{background:#ffffff;}
+    .metric-card{
+        border-radius:12px;
+        box-shadow:0 4px 6px -1px rgb(0 0 0 / 0.1),0 2px 4px -2px rgb(0 0 0 / 0.1);
+        padding:24px; margin-bottom:16px; background:#ffffff; color:#1e293b;
+        transition:box-shadow .2s ease;
+    }
+    .metric-card.primary{background:#2563eb;color:#ffffff;}
+    .metric-card h3{margin:0 0 8px 0; font-size:1rem; font-weight:600; color:#1e293b;}
+    .metric-card.primary h3{color:#ffffff;}
+    .metric-card p{margin:0; font-size:1.5rem; font-weight:700;}
+    .metric-card.primary p{color:#ffffff;}
+    .metric-card:hover{
+        box-shadow:0 10px 15px -3px rgb(0 0 0 / 0.1),0 4px 6px -4px rgb(0 0 0 / 0.1);
+    }
+    .stButton>button{background:#2563eb;color:#fff;border:none;border-radius:8px;padding:10px 16px;}
+    .stButton>button:hover{background:#3b82f6;}
+    .stButton.secondary>button{background:#e2e8f0;color:#475569;}
+    .stDownloadButton>button{background:#2563eb;color:#fff;border:none;border-radius:8px;padding:10px 16px;}
+    .stDownloadButton>button:hover{background:#3b82f6;}
+    @media (max-width:480px){
+        .metric-container .metric-card{width:100%;}
+    }
     </style>
-    <div class="top-nav">자격증 취득자 분석 대시보드</div>
+    <div class="header">
+        <div class="header-left">
+            <div class="title">자격증 취득자 분석 대시보드</div>
+            <div class="breadcrumb">홈 / 대시보드</div>
+        </div>
+        <div class="header-buttons">
+            <button>🔔</button>
+            <button>⚙️</button>
+        </div>
+    </div>
     """,
     unsafe_allow_html=True,
 )
@@ -55,6 +84,16 @@ CERT_DESC = {
     "통신기사": "통신 시스템 설계·운영",
     "소방설비기사": "소방 설비 설계·시공 전문가",
 }
+
+# 필터 상태 초기화
+for _k, _v in [
+    ("year_sel", []),
+    ("gender_sel", []),
+    ("region_sel", []),
+    ("cert_sel", []),
+    ("search_q", ""),
+]:
+    st.session_state.setdefault(_k, _v)
 
 @st.cache_data
 def generate_sample_data(n: int = 500) -> pd.DataFrame:
@@ -129,22 +168,54 @@ st.info("현재는 500건의 샘플 데이터만 표시됩니다. 72,000건 데�
 
 # 사이드바 필터
 st.sidebar.header("필터")
-year_sel = st.sidebar.multiselect("📅 연도", sorted(df["year"].unique()))
-gender_sel = st.sidebar.multiselect("🚻 성별", ALL_GENDERS)
-region_sel = st.sidebar.multiselect("📍 지역", ALL_REGIONS)
-cert_sel = st.sidebar.multiselect("📝 자격증 종류", ALL_CERTS)
-search_q = st.sidebar.text_input("텍스트 검색", placeholder="예: 서울 2020 여성")
+year_sel = st.sidebar.multiselect(
+    "📅 연도", sorted(df["year"].unique()), key="year_sel"
+)
+gender_sel = st.sidebar.multiselect("🚻 성별", ALL_GENDERS, key="gender_sel")
+region_sel = st.sidebar.multiselect("📍 지역", ALL_REGIONS, key="region_sel")
+cert_sel = st.sidebar.multiselect("📝 자격증 종류", ALL_CERTS, key="cert_sel")
+search_q = st.sidebar.text_input(
+    "텍스트 검색", placeholder="예: 서울 2020 여성", key="search_q"
+)
 parsed = parse_search(search_q)
 if parsed["year"]:
-    year_sel = parsed["year"]
+    st.session_state.year_sel = parsed["year"]
 if parsed["gender"]:
-    gender_sel = parsed["gender"]
+    st.session_state.gender_sel = parsed["gender"]
 if parsed["region"]:
-    region_sel = parsed["region"]
+    st.session_state.region_sel = parsed["region"]
 if parsed["certificate_type"]:
-    cert_sel = parsed["certificate_type"]
-if st.sidebar.button("모든 필터 초기화"):
-    st.experimental_rerun()
+    st.session_state.cert_sel = parsed["certificate_type"]
+
+col_reset, col_save, col_load = st.sidebar.columns(3)
+with col_reset:
+    if st.button("모두 선택 초기화", key="reset"):
+        for k in ["year_sel", "gender_sel", "region_sel", "cert_sel", "search_q"]:
+            st.session_state[k] = [] if k != "search_q" else ""
+        st.experimental_rerun()
+with col_save:
+    if st.button("저장", key="save"):
+        st.session_state.saved_filters = {
+            "year_sel": st.session_state.year_sel,
+            "gender_sel": st.session_state.gender_sel,
+            "region_sel": st.session_state.region_sel,
+            "cert_sel": st.session_state.cert_sel,
+            "search_q": st.session_state.search_q,
+        }
+        st.sidebar.success("저장되었습니다")
+with col_load:
+    if st.button("불러오기", key="load"):
+        saved = st.session_state.get("saved_filters")
+        if saved:
+            for k, v in saved.items():
+                st.session_state[k] = v
+            st.experimental_rerun()
+
+year_sel = st.session_state.year_sel
+gender_sel = st.session_state.gender_sel
+region_sel = st.session_state.region_sel
+cert_sel = st.session_state.cert_sel
+search_q = st.session_state.search_q
 
 filtered = df.copy()
 if year_sel:
@@ -163,13 +234,14 @@ _female = int(_gender_counts.get("여성", 0))
 _region_counts = filtered["region"].value_counts()
 _top_region = _region_counts.index[0] if not _region_counts.empty else "-"
 
-def metric_html(title: str, value: str, cls: str) -> str:
-    return f"<div class='metric-card {cls}'><h3>{title}</h3><p>{value}</p></div>"
+def metric_html(title: str, value: str, primary: bool = False) -> str:
+    cls = "metric-card primary" if primary else "metric-card"
+    return f"<div class='{cls}'><h3>{title}</h3><p>{value}</p></div>"
 
 m1, m2, m3 = st.columns(3)
-m1.markdown(metric_html("전체 취득자", f"{len(filtered):,}명", "metric-purple"), unsafe_allow_html=True)
-m2.markdown(metric_html("남 / 여 취득자", f"{_male:,} / {_female:,}", "metric-blue"), unsafe_allow_html=True)
-m3.markdown(metric_html("최다 지역", _top_region, "metric-indigo"), unsafe_allow_html=True)
+m1.markdown(metric_html("전체 취득자", f"{len(filtered):,}명", True), unsafe_allow_html=True)
+m2.markdown(metric_html("남 / 여 취득자", f"{_male:,} / {_female:,}"), unsafe_allow_html=True)
+m3.markdown(metric_html("최다 지역", _top_region), unsafe_allow_html=True)
 
 
 def add_download_button(fig, filename: str):
@@ -182,7 +254,16 @@ def add_download_button(fig, filename: str):
 # 연도별 자격증 취득자 수
 st.subheader("연도별 자격증 취득자 수")
 year_counts = filtered.groupby("year").size().reset_index(name="count")
-fig_year = px.line(year_counts, x="year", y="count", markers=True)
+fig_year = px.line(
+    year_counts,
+    x="year",
+    y="count",
+    markers=True,
+    color_discrete_sequence=["#2563eb"],
+)
+fig_year.update_traces(line=dict(width=2))
+fig_year.update_xaxes(showgrid=True, gridcolor="#e2e8f0", griddash="dot")
+fig_year.update_yaxes(showgrid=True, gridcolor="#e2e8f0", griddash="dot")
 st.plotly_chart(fig_year, use_container_width=True)
 if not year_counts.empty:
     max_row = year_counts.loc[year_counts["count"].idxmax()]
@@ -195,7 +276,12 @@ add_download_button(fig_year, "yearly_trend.png")
 st.subheader("성별 비율")
 gender_counts = _gender_counts.reset_index()
 gender_counts.columns = ["gender", "count"]
-fig_gender = px.pie(gender_counts, names="gender", values="count")
+fig_gender = px.pie(
+    gender_counts,
+    names="gender",
+    values="count",
+    color_discrete_sequence=["#2563eb", "#3b82f6"],
+)
 st.plotly_chart(fig_gender, use_container_width=True)
 if not gender_counts.empty:
     total = gender_counts["count"].sum()
@@ -208,7 +294,14 @@ add_download_button(fig_gender, "gender_ratio.png")
 st.subheader("지역별 분포")
 region_counts = _region_counts.reset_index()
 region_counts.columns = ["region", "count"]
-fig_region_bar = px.bar(region_counts, x="region", y="count")
+fig_region_bar = px.bar(
+    region_counts,
+    x="region",
+    y="count",
+    color_discrete_sequence=["#2563eb"],
+)
+fig_region_bar.update_xaxes(showgrid=True, gridcolor="#e2e8f0", griddash="dot")
+fig_region_bar.update_yaxes(showgrid=True, gridcolor="#e2e8f0", griddash="dot")
 st.plotly_chart(fig_region_bar, use_container_width=True)
 region_coords = {
     "서울": (37.5665, 126.9780),
@@ -264,7 +357,14 @@ def age_group(age: int) -> str:
 filtered["age_group"] = filtered["age"].apply(age_group)
 age_counts = filtered["age_group"].value_counts().reset_index()
 age_counts.columns = ["age_group", "count"]
-fig_age = px.bar(age_counts, x="age_group", y="count")
+fig_age = px.bar(
+    age_counts,
+    x="age_group",
+    y="count",
+    color_discrete_sequence=["#2563eb"],
+)
+fig_age.update_xaxes(showgrid=True, gridcolor="#e2e8f0", griddash="dot")
+fig_age.update_yaxes(showgrid=True, gridcolor="#e2e8f0", griddash="dot")
 st.plotly_chart(fig_age, use_container_width=True)
 if not age_counts.empty:
     top_age = age_counts.iloc[0]["age_group"]
@@ -287,7 +387,10 @@ fig_cert = px.bar(
     x="certificate_type",
     y="count",
     hover_data=["description"],
+    color_discrete_sequence=["#2563eb"],
 )
+fig_cert.update_xaxes(showgrid=True, gridcolor="#e2e8f0", griddash="dot")
+fig_cert.update_yaxes(showgrid=True, gridcolor="#e2e8f0", griddash="dot")
 st.plotly_chart(fig_cert, use_container_width=True)
 if not cert_counts.empty:
     top_cert = cert_counts.iloc[0]["certificate_type"]
